@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 
@@ -129,3 +130,38 @@ def test_run_ids_are_unique_and_sortable():
     ids = {new_run_id() for _ in range(50)}
     assert len(ids) == 50
     assert all(len(i.split("-")[0]) == 16 for i in ids)
+
+
+# ------------------------------------------------------------------ java home
+def test_broken_java_home_falls_back_to_java_on_path(monkeypatch, tmp_path):
+    """VDI bug: setup-environment.sh leaves JAVA_HOME=/usr/lib/jvm/java--openjdk-amd64."""
+    from common.spark import ensure_java_home
+
+    jdk = tmp_path / "jdk-21"
+    (jdk / "bin").mkdir(parents=True)
+    java = jdk / "bin" / "java"
+    java.write_text("#!/bin/sh\n")
+    java.chmod(0o755)
+    monkeypatch.setenv("JAVA_HOME", "/usr/lib/jvm/java--openjdk-amd64")
+    monkeypatch.setenv("PATH", str(jdk / "bin"))
+    ensure_java_home()
+    assert os.environ["JAVA_HOME"] == str(jdk)
+
+
+def test_valid_java_home_is_left_alone(monkeypatch, tmp_path):
+    from common.spark import ensure_java_home
+
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "java").write_text("")
+    monkeypatch.setenv("JAVA_HOME", str(tmp_path))
+    ensure_java_home()
+    assert os.environ["JAVA_HOME"] == str(tmp_path)
+
+
+def test_no_java_anywhere_is_a_clear_error(monkeypatch, tmp_path):
+    from common.spark import ensure_java_home
+
+    monkeypatch.setenv("JAVA_HOME", "/nope")
+    monkeypatch.setenv("PATH", str(tmp_path))
+    with pytest.raises(RuntimeError, match="install a JDK"):
+        ensure_java_home()

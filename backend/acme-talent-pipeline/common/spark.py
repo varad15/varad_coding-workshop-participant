@@ -3,11 +3,38 @@
 from __future__ import annotations
 
 import os
+import shutil
+from pathlib import Path
 
 import pyarrow as pa
 from pyspark.sql import DataFrame, SparkSession
 
 from common.config import Settings
+from common.logger import get_logger
+
+log = get_logger("spark")
+
+
+def ensure_java_home() -> None:
+    """
+    Make sure JAVA_HOME points at a real JDK before Spark launches its JVM.
+
+    The workshop VDI's setup-environment.sh writes
+    `export JAVA_HOME=/usr/lib/jvm/java-$JAVA_VERSION-openjdk-amd64` to
+    ~/.bashrc inside single quotes, so $JAVA_VERSION is never expanded and
+    JAVA_HOME becomes /usr/lib/jvm/java--openjdk-amd64. Spark then fails with
+    JAVA_GATEWAY_EXITED. If JAVA_HOME is set but has no bin/java, fall back to
+    the `java` found on PATH and log a warning.
+    """
+    home = os.environ.get("JAVA_HOME")
+    if not home or (Path(home) / "bin" / "java").is_file():
+        return
+    java = shutil.which("java")
+    if java is None:
+        raise RuntimeError(f"JAVA_HOME={home} has no bin/java and no java is on PATH; install a JDK (17+)")
+    fixed = str(Path(java).resolve().parents[1])
+    log.warning("java_home_invalid_using_path_java", extra={"configured": home, "using": fixed})
+    os.environ["JAVA_HOME"] = fixed
 
 
 def create_spark_session(settings: Settings, app_name: str = "acme-talent-pipeline") -> SparkSession:
@@ -28,6 +55,7 @@ def create_spark_session(settings: Settings, app_name: str = "acme-talent-pipeli
     # (e.g. /usr/local/spark 3.5 inside the jupyter/all-spark-notebook image).
     if os.environ.get("PIPELINE_USE_PIP_SPARK", "true").lower() == "true":
         os.environ.pop("SPARK_HOME", None)
+    ensure_java_home()
 
     builder = (
         SparkSession.builder.appName(app_name)
