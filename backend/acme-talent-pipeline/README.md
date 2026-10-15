@@ -98,11 +98,19 @@ aws --endpoint-url $AWS_ENDPOINT_URL_S3 s3 cp s3://coding-workshop-datalake-$PAR
 
 ### Notebook (local)
 
+Run Jupyter from the pipeline's virtual environment. On the VDI the system Python's Pillow is broken, so the
+default "Python 3" kernel cannot import matplotlib.
+
 ```sh
-pip install pyarrow pandas matplotlib       # into the Jupyter environment if missing
-# start Jupyter from a shell that has the exports above, then open notebooks/acme_talent_insights.ipynb
-jupyter notebook --port 8888
+source .venv/bin/activate                   # the same venv the pipeline runs in
+pip install notebook ipykernel matplotlib pillow
+python -m ipykernel install --user --name acme-pipeline --display-name "ACME pipeline (.venv)"
+# from a shell that has the exports above:
+python -m jupyter notebook --port 8889
 ```
+
+Open `notebooks/acme_talent_insights.ipynb`, choose **Kernel → Change kernel → ACME pipeline (.venv)**, then
+**Run → Run All Cells**. The notebook reads only Gold tables (plus the DQ report) from S3, so run `python job.py` first.
 
 ## Tests
 
