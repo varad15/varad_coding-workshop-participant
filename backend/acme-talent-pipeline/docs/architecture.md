@@ -95,6 +95,7 @@ Verified by `tests/integration/test_pipeline_end_to_end.py::test_second_run_is_i
 | S3 | LocalStack (`AWS_ENDPOINT_URL_S3`) | AWS S3 bucket `coding-workshop-datalake-<id>`, created by the deploy script |
 | Landing data | `landing` stage uploads `backend/_source` | the deploy script syncs `backend/_source` to `landing/` before the job |
 | Notebook | Jupyter on the VDI, LocalStack S3 | Jupyter on the VDI with `IS_LOCAL=false`, reading the real S3 data lake |
+| Dashboard | `npm run dev` against the snapshot | React UI on S3+CloudFront + `insights-api` Lambda (stock deploy scripts), reading `gold/_api/` |
 
 ## Repository changes outside `backend/`
 

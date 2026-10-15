@@ -1,0 +1,2 @@
+# boto3 is provided by the AWS Lambda Python runtime; nothing to vendor.
+# This file exists so the workshop Terraform detects the folder as a Lambda.

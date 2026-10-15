@@ -125,12 +125,22 @@ def run_gold(spark: SparkSession, lake: DataLake, run: RunContext) -> dict[str, 
     ]
 
     written: dict[str, int] = {}
+    frames: dict[str, object] = {}
     for name, grain, build, reconcile in tables:
         with run.step(f"gold.{name}", source=lake.uri("silver/"), target=lake.uri(f"{GOLD_PREFIX}/{name}"), critical=True) as m:
             df = build().cache()
             m.rows_read = m.rows_valid = assert_grain(df, name, grain)
             reconcile(df)
             m.notes.update(grain=list(grain), as_of_date=s.as_of_date.isoformat(), checks="passed")
-            m.rows_written = lake.write_table(to_arrow(df), f"{GOLD_PREFIX}/{name}")
+            table = to_arrow(df)
+            m.rows_written = lake.write_table(table, f"{GOLD_PREFIX}/{name}")
+            frames[name] = table.to_pandas()
             written[name] = m.rows_written
+
+    # Chart-ready JSON summaries for the insights dashboard (backend/insights-api).
+    from gold.api_export import API_PREFIX, export_api  # local import: pandas-only module
+
+    with run.step("gold.api_export", source=lake.uri(GOLD_PREFIX), target=lake.uri(API_PREFIX)) as m:
+        m.rows_read = len(frames)
+        m.rows_written = export_api(lake, frames, s.as_of_date, run)
     return written

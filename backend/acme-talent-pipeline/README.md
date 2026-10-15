@@ -156,6 +156,25 @@ STAGES=silver,gold ./backend/acme-talent-pipeline/deploy/deploy.sh   # re-run se
 ./backend/acme-talent-pipeline/deploy/undeploy.sh   # remove the Job, ConfigMap and Secret (data kept)
 ```
 
+### Insights dashboard (Lambda API + React UI, stock deploy scripts)
+
+The pipeline's Gold stage also writes chart-ready JSON to `gold/_api/`. Two further components turn that into a
+hosted product, each deployed by the workshop's own scripts, unchanged:
+
+| Component | Code | Deployed by | Where it runs |
+|---|---|---|---|
+| `insights-api` | [`backend/insights-api/function.py`](../insights-api/function.py) | `./bin/deploy-backend.sh` | Lambda, served at `<website>/api/insights-api/<dataset>` via CloudFront |
+| ACME Talent Insights UI | [`frontend/`](../../frontend/) | `./bin/deploy-frontend.sh` | S3 + CloudFront (`website_url` output) |
+
+```sh
+./bin/deploy-backend.sh      # also deploys the insights-api Lambda
+./bin/deploy-frontend.sh     # builds the React dashboard and publishes it to CloudFront
+```
+
+The dashboard answers all seven questions (plus the beyond-the-brief analyses) with KPI tiles, charts and drill-down
+tables, in light and dark mode. If the Lambda cannot reach the data lake it falls back to a snapshot bundled at build
+time, and says so in its header badge.
+
 ### Notebook against the cloud data lake
 
 Run Jupyter on the VDI (as in "Notebook (local)") from a shell with the participant credentials, pointing at real S3:
