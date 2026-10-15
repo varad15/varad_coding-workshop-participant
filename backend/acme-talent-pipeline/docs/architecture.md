@@ -90,11 +90,11 @@ Verified by `tests/integration/test_pipeline_end_to_end.py::test_second_run_is_i
 
 | | Local (VDI) | Cloud (AWS) |
 |---|---|---|
-| Runs as | `python job.py` | Kubernetes Job on the stock EKS cluster, started by this folder's deploy script (in progress) |
+| Runs as | `python job.py` | Kubernetes Job on the stock EKS cluster, started by `deploy/deploy.sh` |
 | PostgreSQL | local PostgreSQL `postgres/postgres123` | Aurora PostgreSQL Serverless v2, `sslmode=require` |
 | S3 | LocalStack (`AWS_ENDPOINT_URL_S3`) | AWS S3 bucket `coding-workshop-datalake-<id>`, created by the deploy script |
 | Landing data | `landing` stage uploads `backend/_source` | the deploy script syncs `backend/_source` to `landing/` before the job |
-| Notebook | Jupyter on `localhost:8888` | JupyterHub on EKS (`kubectl port-forward svc/proxy-public 8080:80`) |
+| Notebook | Jupyter on the VDI, LocalStack S3 | Jupyter on the VDI with `IS_LOCAL=false`, reading the real S3 data lake |
 
 ## Repository changes outside `backend/`
 
@@ -103,4 +103,4 @@ None. `bin/` and `infra/` match the workshop repo. Two consequences are handled 
 | Stock behaviour | How the pipeline avoids it |
 |---|---|
 | Every `backend/*/requirements.txt` folder is deployed as a 128 MB Lambda (and `start-dev.sh` vendors its packages into the folder) | dependencies live in `requirements-job.txt`, so the stock scripts skip this folder |
-| The stock EKS job ships only one `job.py`, with no environment variables or secrets | the pipeline is deployed with its own Kubernetes manifest and script (in progress) |
+| The stock EKS job ships only one `job.py`, with no environment variables or secrets, and a 2 GiB limit | `deploy/deploy.sh` + `deploy/k8s/job.yaml`: code bundle ConfigMap, env vars, password Secret, 3 GiB limit |

@@ -41,4 +41,10 @@
 - **S3 permissions of the EKS node role** (`coding-workshop-eks-<region>-<id>`, pre-created by the organisers): it needs
   read/write on `coding-workshop-datalake-<id>`. Otherwise the job fails with *AccessDenied* (§7).
 - **Memory:** Spark's JVM plus the Python driver peak at about 2.1 GiB (PSS) on the sample data with a 512 MB heap,
-  so the job's own manifest must allow ~3 GiB (the stock Helm job limit is 2 GiB).
+  so `deploy/k8s/job.yaml` allows 3 GiB (the stock Helm job limit is 2 GiB).
+- **Image:** `jupyter/all-spark-notebook:latest` (the workshop's job image: Python 3.11, Java 17). Every pinned
+  dependency has a Python 3.11 wheel (checked); PySpark 4.1.2 needs Python ≥ 3.10 and Java 17+. The pod installs
+  them from PyPI at start-up, as the stock Helm job does. Override with `JOB_IMAGE=...`.
+- **Verified so far:** the deploy script passes shellcheck; the state reader and the rendered Job manifest are unit-tested;
+  the exact code bundle was unpacked and run with the pod's stage list against a fresh bucket and database (all steps
+  succeeded, same counts as locally). A real EKS run is still pending.

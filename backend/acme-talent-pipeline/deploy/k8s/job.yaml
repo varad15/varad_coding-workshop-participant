@@ -1,0 +1,59 @@
+# Kubernetes Job for the ACME talent pipeline. Rendered by deploy.sh
+# Placeholders (dollar + braces) are filled from the environment; never commit real values.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${JOB_NAME}
+  namespace: ${NAMESPACE}
+  labels:
+    app.kubernetes.io/name: ${JOB_NAME}
+spec:
+  backoffLimit: 0                    # retries happen inside the job (common/retry.py); a failed run stays visible
+  ttlSecondsAfterFinished: 86400     # keep the finished pod and its logs for a day
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ${JOB_NAME}
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: pipeline
+          image: ${JOB_IMAGE}        # same Spark + Java image as the workshop's Helm job
+          imagePullPolicy: IfNotPresent
+          command: ["bash", "-c"]
+          args:
+            - |
+              set -e
+              mkdir -p /tmp/app
+              tar -xzf /bundle/bundle.tar.gz -C /tmp/app
+              cd /tmp/app
+              echo "Installing pipeline dependencies..."
+              pip install --quiet -r requirements-job.txt
+              exec python job.py --stages ${STAGES}
+          env:
+            - {name: IS_LOCAL, value: "false"}
+            - {name: APP_ID, value: "${APP_ID}"}
+            - {name: AWS_REGION, value: "${AWS_REGION}"}
+            - {name: AWS_DEFAULT_REGION, value: "${AWS_REGION}"}
+            - {name: DATALAKE_BUCKET, value: "${DATALAKE_BUCKET}"}
+            - {name: POSTGRES_HOST, value: "${PG_HOST}"}
+            - {name: POSTGRES_PORT, value: "${PG_PORT}"}
+            - {name: POSTGRES_NAME, value: "${PG_NAME}"}
+            - {name: POSTGRES_USER, value: "${PG_USER}"}
+            - {name: SPARK_MASTER, value: "local[2]"}
+            - {name: SPARK_DRIVER_MEMORY, value: "512m"}
+            - {name: PYTHONUNBUFFERED, value: "1"}
+            - {name: PIP_NO_CACHE_DIR, value: "1"}
+            - {name: PIP_DISABLE_PIP_VERSION_CHECK, value: "1"}
+          envFrom:
+            - secretRef:
+                name: ${JOB_NAME}-db     # POSTGRES_PASS, created by deploy.sh from Terraform state
+          resources:
+            requests: {cpu: 500m, memory: 1Gi}
+            limits: {cpu: "2", memory: 3Gi}   # measured peak ~2.1 GiB (docs/test-evidence.md)
+          volumeMounts:
+            - {name: code, mountPath: /bundle, readOnly: true}
+      volumes:
+        - name: code
+          configMap:
+            name: ${JOB_NAME}-code       # bundle.tar.gz of this folder, created by deploy.sh

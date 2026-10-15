@@ -127,9 +127,44 @@ Integration tests create and drop their own database (`acme_test`) and buckets. 
 
 ## Deploy to AWS
 
-`bin/` and `infra/` are kept identical to the workshop repo. The stock `./bin/deploy-backend.sh` (with
-`TF_VAR_aws_eks_enabled=true`) provisions Aurora and the EKS cluster; the pipeline is then deployed onto that
-cluster by a script inside this folder (`deploy/`, in progress). The earlier version that wired the job into
-`infra/` is archived on branch `feature/eks-deploy-infra`.
+`bin/` and `infra/` are identical to the workshop repo. The workshop's own script provisions the platform;
+`deploy/deploy.sh` (in this folder) deploys and runs the pipeline on it.
+
+```sh
+cd ~/coding-workshop-participant
+source ~/.bashrc
+./bin/setup-participant.sh && source ENVIRONMENT.config          # fresh AWS credentials
+
+# 1. Platform (stock scripts): Aurora PostgreSQL + EKS cluster
+echo "export TF_VAR_aws_eks_enabled=true" >> ~/.bashrc && source ~/.bashrc
+./bin/deploy-backend.sh
+
+# 2. Workload: bucket, landing data, Secret, code, Kubernetes Job (streams the logs)
+./backend/acme-talent-pipeline/deploy/deploy.sh
+```
+
+`deploy.sh` reads the EKS cluster name and the Aurora connection from the Terraform state, creates
+`s3://coding-workshop-datalake-<app-id>` (private, encrypted) if needed, syncs `backend/_source` to `landing/`,
+stores the Aurora password as the Kubernetes Secret `acme-talent-pipeline-db`, ships this folder (code only,
+~40 KB) as the ConfigMap `acme-talent-pipeline-code`, and runs the Job `acme-talent-pipeline`
+(`deploy/k8s/job.yaml`: Spark image, `IS_LOCAL=false`, 3 GiB memory limit). It exits 0 only if the job succeeds.
+
+```sh
+kubectl get jobs,pods                               # status
+kubectl logs job/acme-talent-pipeline               # logs again
+STAGES=silver,gold ./backend/acme-talent-pipeline/deploy/deploy.sh   # re-run selected stages
+./backend/acme-talent-pipeline/deploy/undeploy.sh   # remove the Job, ConfigMap and Secret (data kept)
+```
+
+### Notebook against the cloud data lake
+
+Run Jupyter on the VDI (as in "Notebook (local)") from a shell with the participant credentials, pointing at real S3:
+
+```sh
+source ENVIRONMENT.config
+export IS_LOCAL=false DATALAKE_BUCKET=coding-workshop-datalake-<app-id>     # printed by deploy.sh
+unset AWS_ENDPOINT_URL_S3
+python -m jupyter notebook --port 8889
+```
 
 Cloud caveats (S3 permissions of the EKS role, job memory, redeploys) are in [docs/limitations.md](docs/limitations.md).
