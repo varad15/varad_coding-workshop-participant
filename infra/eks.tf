@@ -109,7 +109,8 @@ resource "null_resource" "helm_python_job" {
       mkdir -p "$BUILD_DIR"
       tar -czf "$BUILD_DIR/bundle.tgz" -C "${each.value.path}" \
         --exclude=tests --exclude=notebooks --exclude=docs \
-        --exclude=__pycache__ --exclude=.pytest_cache --exclude=htmlcov .
+        --exclude=__pycache__ --exclude=.pytest_cache --exclude=htmlcov \
+        --exclude=.venv --exclude=venv --exclude=spark-warehouse --exclude="*.pyc" .
       base64 -w0 "$BUILD_DIR/bundle.tgz" > "$BUILD_DIR/bundle.b64"
       cat > "$BUILD_DIR/env.json" <<'JSON'
       ${jsonencode(local.job_env_vars)}

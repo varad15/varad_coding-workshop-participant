@@ -38,6 +38,6 @@
 
 - **S3 permissions of the EKS node role.** The job uses the pod's AWS credentials (EKS node role `coding-workshop-eks-<region>-<id>`, pre-created by the organisers). If it lacks access to `coding-workshop-datalake-<id>`, the job fails with *AccessDenied* (§7). Fix: grant the role access to the bucket, or pass the participant credentials from `ENVIRONMENT.config` as job secrets.
 - **Job image** `jupyter/all-spark-notebook:latest` ships an older Spark; the job installs PySpark 4.1.2 with pip and ignores the image's `SPARK_HOME` (`common/spark.py`). The pod needs PyPI access (already assumed by the repo's Helm template).
-- **Memory:** the Helm job limit is 2 GiB. The measured peak is in `test-evidence.md`.
+- **Memory:** Spark's JVM plus the Python driver peak at about 2.1 GiB (PSS) on the sample data, even with a 512 MB heap and capped JVM overheads. That exceeds the repo's default 2 GiB job limit, so the limit is raised to **3 GiB** (request unchanged at 1 GiB, so it still schedules next to JupyterHub on one t3.medium). Running the job and a heavy notebook session at the same moment could pressure the 4 GiB node.
 - **Redeploying while a Job still exists:** a Kubernetes Job's pod template is immutable. Wait for `ttlSecondsAfterFinished` (100 s) or run `kubectl delete job coding-workshop-acme-talent-pipeline` before `deploy-backend.sh`.
 - Terraform/Helm changes were written for the repo's toolchain but couldn't be executed in the development sandbox. Run `terraform validate` on the VDI first.

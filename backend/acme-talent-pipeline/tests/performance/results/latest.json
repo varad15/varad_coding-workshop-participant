@@ -1,0 +1,40 @@
+{
+  "scale": {
+    "1": {
+      "raw_event_lines": 29868,
+      "silver_events": 29536,
+      "event_pipeline_seconds": 40.02,
+      "records_per_minute": 44775,
+      "seconds_per_10k_records": 13.4,
+      "job_wall_seconds": 93.7,
+      "peak_pss_mb": 2139,
+      "avg_cpu_percent": 19
+    },
+    "3": {
+      "raw_event_lines": 89604,
+      "silver_events": 88608,
+      "event_pipeline_seconds": 185.07,
+      "records_per_minute": 29050,
+      "seconds_per_10k_records": 20.654,
+      "job_wall_seconds": 252.2,
+      "peak_pss_mb": 2213,
+      "avg_cpu_percent": 18
+    },
+    "6": {
+      "raw_event_lines": 179208,
+      "silver_events": 177216,
+      "event_pipeline_seconds": 227.02,
+      "records_per_minute": 47364,
+      "seconds_per_10k_records": 12.668,
+      "job_wall_seconds": 306.9,
+      "peak_pss_mb": 2267,
+      "avg_cpu_percent": 29
+    }
+  },
+  "per_record_slowdown_6x_vs_1x": 0.95,
+  "sla": {
+    "sla_seconds": 600,
+    "end_to_end_seconds": 114.4,
+    "peak_pss_mb": 2116
+  }
+}

@@ -138,7 +138,8 @@ locals {
     {
       AWS_REGION          = data.aws_region.this.region
       DATALAKE_BUCKET     = aws_s3_bucket.datalake.bucket
-      SPARK_DRIVER_MEMORY = "1g"
+      SPARK_DRIVER_MEMORY = "512m"
+      SPARK_MASTER        = "local[2]"
     }
   )
   job_secret_env_vars = { for k in local.job_secret_keys : k => local.env_vars[k] if try(trimspace(local.env_vars[k]), "") != "" }

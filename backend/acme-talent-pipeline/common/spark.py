@@ -36,6 +36,15 @@ def create_spark_session(settings: Settings, app_name: str = "acme-talent-pipeli
         .config("spark.sql.execution.arrow.pyspark.enabled", "true")
         .config("spark.sql.shuffle.partitions", os.environ.get("SPARK_SHUFFLE_PARTITIONS", "8"))
         .config("spark.driver.memory", os.environ.get("SPARK_DRIVER_MEMORY", "1g"))
+        # Cap JVM memory outside the heap so the job fits the EKS pod limit
+        # (measured: docs/test-evidence.md). Serial GC suits a 2-core node.
+        .config(
+            "spark.driver.extraJavaOptions",
+            os.environ.get(
+                "SPARK_DRIVER_JAVA_OPTS",
+                "-XX:+UseSerialGC -XX:MaxMetaspaceSize=256m -XX:MaxDirectMemorySize=256m -XX:ReservedCodeCacheSize=128m -Xss512k",
+            ),
+        )
         .config("spark.ui.enabled", "false")
     )
     spark = builder.getOrCreate()

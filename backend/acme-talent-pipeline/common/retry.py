@@ -31,7 +31,7 @@ def with_retry(
     attempts: int = 5,
     base_delay: float = 1.0,
     max_delay: float = 30.0,
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
     Decorate a function so it is retried on the given exception types.
@@ -41,7 +41,7 @@ def with_retry(
         attempts: Total attempts including the first call.
         base_delay: First backoff delay in seconds.
         max_delay: Upper bound for a single delay.
-        sleep: Injectable sleep function (tests pass a no-op).
+        sleep: Injectable sleep function (default: time.sleep, looked up at call time).
     """
 
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
@@ -68,7 +68,7 @@ def with_retry(
                             "error": repr(exc),
                         },
                     )
-                    sleep(delay)
+                    (sleep or time.sleep)(delay)
             raise AssertionError("unreachable")  # pragma: no cover
 
         return wrapper
