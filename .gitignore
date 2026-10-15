@@ -256,3 +256,8 @@ tfplan
 
 # Snyk Security Extension - AI Rules (auto-generated)
 .github/instructions/snyk_rules.instructions.md
+
+# acme-talent-pipeline local artefacts
+backend/acme-talent-pipeline/.pytest_cache/
+backend/acme-talent-pipeline/htmlcov/
+backend/acme-talent-pipeline/spark-warehouse/

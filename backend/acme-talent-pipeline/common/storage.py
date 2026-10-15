@@ -63,7 +63,11 @@ class DataLake:
             "s3",
             endpoint_url=settings.s3.endpoint_url,
             region_name=settings.s3.region,
-            config=Config(retries={"max_attempts": 3, "mode": "standard"}, s3={"addressing_style": "path"}),
+            config=Config(
+                retries={"max_attempts": 3, "mode": "standard"},
+                s3={"addressing_style": "path"},
+                max_pool_connections=32,
+            ),
         )
         fs_kwargs: dict[str, object] = {"region": settings.s3.region}
         if settings.s3.endpoint_url:
@@ -209,6 +213,29 @@ class DataLake:
         _write()
         log.info("parquet_written", extra={"target": self.uri(prefix), "rows": table.num_rows})
         return table.num_rows
+
+    def write_immutable(self, table: pa.Table, prefix: str) -> bool:
+        """
+        Write a Parquet file to a prefix that must never be modified (Bronze).
+
+        If the prefix already holds data the write is skipped, which keeps
+        reruns idempotent without ever overwriting raw data.
+
+        Returns:
+            True if written, False if the prefix already existed.
+        """
+        prefix = prefix.strip("/")
+        if self.exists(prefix + "/"):
+            log.info("immutable_prefix_exists_skip", extra={"target": self.uri(prefix)})
+            return False
+
+        @with_retry(TRANSIENT_S3_ERRORS + (OSError,), attempts=self._attempts)
+        def _write() -> None:
+            pq.write_table(table, self._path(f"{prefix}/part-0.parquet"), filesystem=self.fs)
+
+        _write()
+        log.info("immutable_written", extra={"target": self.uri(prefix), "rows": table.num_rows})
+        return True
 
     def read_table(self, prefix: str) -> pa.Table:
         """Read every Parquet file under a prefix (Hive partitions become columns)."""

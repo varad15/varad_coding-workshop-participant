@@ -4,3 +4,4 @@ pyarrow==26.0.0
 pydantic==2.14.1
 psycopg[binary]==3.3.6
 boto3==1.43.114
+tzdata==2025.2
