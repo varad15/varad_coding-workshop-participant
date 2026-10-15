@@ -1,15 +1,16 @@
 """
 Ingest learning-activity JSONL files from the S3 landing zone into Bronze.
 
-Layout (immutable, same Hive partitions as the source):
-    bronze/learning_activity/year=YYYY/month=MM/day=DD/part-0.parquet
+Layout (immutable, same Hive partitions as the source, one folder per source file):
+    bronze/learning_activity/year=YYYY/month=MM/day=DD/<source-file-stem>/part-0.parquet
 
 * Every line is stored as raw text (`raw_line`), so even truncated or
   malformed JSON is preserved for Silver to diagnose. Nothing is parsed or
   dropped here.
-* Incremental: a day partition already present in Bronze is not re-ingested.
-  New landing files are picked up on the next run; existing ones are never
-  overwritten (immutable raw zone).
+* Incremental, per source file: a landing file already present in Bronze is
+  not re-ingested; new files (including a second file for the same day, e.g.
+  events-001.jsonl) are picked up on the next run. Existing Bronze data is
+  never overwritten (immutable raw zone).
 * Lineage columns on every row:
     _source_file (s3 URI), _source_size_bytes, _line_number, _batch_id,
     _ingested_at, _run_id
@@ -51,6 +52,26 @@ def partition_of(key: str) -> str | None:
     return f"year={match.group(1)}/month={match.group(2)}/day={match.group(3)}" if match else None
 
 
+def bronze_key_of(landing_key: str) -> str | None:
+    """Return the Bronze folder for a landing file: '<partition>/<file stem>'."""
+    partition = partition_of(landing_key)
+    if partition is None:
+        return None
+    stem = landing_key.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    return f"{partition}/{stem}"
+
+
+def _ingested_files(bronze_keys: list[str]) -> set[str]:
+    """Return '<partition>/<file stem>' for every source file already in Bronze."""
+    done = set()
+    for key in bronze_keys:
+        match = _PARTITION_RE.search(key)
+        if match:
+            rest = key[match.end():].split("/", 1)[0]
+            done.add(f"{match.group(0)}{rest}")
+    return done
+
+
 def lines_to_table(raw: bytes, source_uri: str, size: int, run: RunContext) -> pa.Table:
     """Split a JSONL file into one raw row per non-empty line (line numbers kept)."""
     text = raw.decode("utf-8", errors="replace")
@@ -78,17 +99,17 @@ def ingest_learning_events(lake: DataLake, run: RunContext) -> None:
         target=lake.uri(BRONZE_EVENTS_PREFIX),
     ) as m:
         landing = [o for o in lake.list_objects(LANDING_EVENTS_PREFIX) if o.key.endswith(".jsonl")]
-        ingested = {p for o in lake.list_objects(BRONZE_EVENTS_PREFIX + "/") if (p := partition_of(o.key))}
-        bad_paths = [o.key for o in landing if partition_of(o.key) is None]
+        ingested = _ingested_files([o.key for o in lake.list_objects(BRONZE_EVENTS_PREFIX + "/")])
+        bad_paths = [o.key for o in landing if bronze_key_of(o.key) is None]
         if bad_paths:
             log.warning("landing_files_without_partition_ignored", extra={"files": bad_paths[:10]})
 
-        todo = [o for o in landing if (p := partition_of(o.key)) and p not in ingested]
+        todo = [o for o in landing if (b := bronze_key_of(o.key)) and b not in ingested]
         m.notes.update(landing_files=len(landing), already_ingested=len(landing) - len(todo) - len(bad_paths))
 
         def _ingest(obj: ObjectInfo) -> int:
             table = lines_to_table(lake.get_bytes(obj.key), lake.uri(obj.key), obj.size, run)
-            lake.write_immutable(table, f"{BRONZE_EVENTS_PREFIX}/{partition_of(obj.key)}")
+            lake.write_immutable(table, f"{BRONZE_EVENTS_PREFIX}/{bronze_key_of(obj.key)}")
             return table.num_rows
 
         with ThreadPoolExecutor(max_workers=16) as pool:

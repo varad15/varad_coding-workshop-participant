@@ -92,6 +92,13 @@ def _existing_tables(cur) -> set[str]:
 def seed_postgres(pg: Postgres, lake: DataLake, run: RunContext) -> None:
     """Load the HR CSVs from S3 into PostgreSQL, idempotently."""
     with run.step("seed.postgres", source=lake.uri(LANDING_SEED_PREFIX), target="postgresql://hr") as m:
+        present = {o.key for o in lake.list_objects(LANDING_SEED_PREFIX)}
+        missing = [f"{LANDING_SEED_PREFIX}{t}.csv" for t in HR_TABLES if f"{LANDING_SEED_PREFIX}{t}.csv" not in present]
+        if missing:
+            raise FileNotFoundError(
+                f"Seed files missing in {lake.uri(LANDING_SEED_PREFIX)}: {missing}. "
+                "Run 'python job.py --stages landing' (or deploy, which syncs backend/_source) first."
+            )
         csv_bytes = {t: lake.get_bytes(f"{LANDING_SEED_PREFIX}{t}.csv") for t in HR_TABLES}
         expected = {t: _csv_rows(b) for t, b in csv_bytes.items()}
         m.rows_read = sum(expected.values())

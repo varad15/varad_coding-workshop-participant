@@ -332,6 +332,11 @@ fi
 shopt -s nullglob
 for req in "$PROJECT_ROOT"/backend/*/requirements.txt; do
     svc_dir="$(dirname "$req")"
+    # Batch data jobs (folders with job.py) run on EKS, not Lambda: never vendor
+    # their dependencies (e.g. PySpark) into the source folder.
+    if [ -f "$svc_dir/job.py" ]; then
+        continue
+    fi
     REQS_HASH=$(md5sum "$req" 2>/dev/null | cut -d' ' -f1)
     HASH_FILE="$svc_dir/.pip_installed"
     if [ "$(cat "$HASH_FILE" 2>/dev/null)" = "$REQS_HASH" ]; then

@@ -6,8 +6,11 @@ functions are kept:
 
     create_spark_session() -> ingest_into_bronze() -> transform_to_silver() -> aggregate_to_gold()
 
-A source bootstrap step (seed_sources) runs first so the PostgreSQL source
-is populated in both environments (Aurora starts empty in the cloud).
+Two source bootstrap stages run first (they simulate the upstream systems):
+  landing - publish backend/_source files to the S3 landing zone (skipped when
+            the folder is absent, e.g. inside the EKS pod, where Terraform has
+            already synced the files);
+  seed    - load the HR CSVs from S3 into PostgreSQL (Aurora starts empty).
 
 Usage:
     python job.py                         # all stages
@@ -36,7 +39,7 @@ from common.postgres import Postgres  # noqa: E402
 from common.storage import DataLake  # noqa: E402
 from seed.load_sources import publish_landing, seed_postgres  # noqa: E402
 
-ALL_STAGES = ("seed", "bronze", "silver", "gold")
+ALL_STAGES = ("landing", "seed", "bronze", "silver", "gold")
 log = get_logger("job")
 
 
@@ -45,13 +48,17 @@ def create_spark_session(settings: Settings) -> SparkSession:
     return spark_factory.create_spark_session(settings)
 
 
-def seed_sources(settings: Settings, pg: Postgres, lake: DataLake, run: RunContext) -> None:
-    """Bootstrap the source systems (landing files + PostgreSQL tables)."""
+def publish_sources(settings: Settings, lake: DataLake, run: RunContext) -> None:
+    """Publish the sample dataset to the S3 landing zone (S3 source system)."""
     lake.ensure_bucket()
     if settings.source_dir.exists():
         publish_landing(lake, settings.source_dir, run)
     else:
         log.info("source_dir_absent_skip_publish", extra={"source_dir": str(settings.source_dir)})
+
+
+def seed_sources(pg: Postgres, lake: DataLake, run: RunContext) -> None:
+    """Load the PostgreSQL source system from the landing zone."""
     seed_postgres(pg, lake, run)
 
 
@@ -100,8 +107,10 @@ def main(argv: list[str] | None = None) -> int:
     spark: SparkSession | None = None
     status = "failed"
     try:
+        if "landing" in args.stages and settings.seed_sources:
+            publish_sources(settings, lake, run)
         if "seed" in args.stages and settings.seed_sources:
-            seed_sources(settings, pg, lake, run)
+            seed_sources(pg, lake, run)
         if "bronze" in args.stages:
             ingest_into_bronze(pg, lake, run)
         if "silver" in args.stages or "gold" in args.stages:

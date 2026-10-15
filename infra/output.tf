@@ -31,6 +31,11 @@ output "s3_bucket_id" {
   value       = aws_s3_bucket.this.id
 }
 
+output "datalake_bucket_name" {
+  description = "The S3 data lake bucket used by the data pipeline"
+  value       = aws_s3_bucket.datalake.bucket
+}
+
 output "s3_bucket_name" {
   description = "The name of the S3 bucket"
   value       = aws_s3_bucket.this.bucket
