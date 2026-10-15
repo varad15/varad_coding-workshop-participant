@@ -1,0 +1,13 @@
+[run]
+source = .
+omit =
+    tests/*
+    notebooks/*
+# The end-to-end tests run job.py in a subprocess (as Kubernetes does):
+# measure those processes too, and combine the results.
+patch = subprocess
+parallel = true
+
+[report]
+show_missing = true
+skip_empty = true
