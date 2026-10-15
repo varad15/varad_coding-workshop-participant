@@ -27,9 +27,13 @@ spec:
               mkdir -p /tmp/app
               tar -xzf /bundle/bundle.tar.gz -C /tmp/app
               cd /tmp/app
-              echo "Installing pipeline dependencies..."
-              pip install --quiet -r requirements-job.txt
-              exec python job.py --stages ${STAGES}
+              # Own virtualenv: the image's conda packages are built for NumPy 1.x and
+              # its PYTHONPATH/SPARK_HOME point at an older Spark.
+              unset PYTHONPATH SPARK_HOME
+              echo "Installing pipeline dependencies into /tmp/venv..."
+              python -m venv /tmp/venv
+              /tmp/venv/bin/pip install --quiet -r requirements-job.txt
+              exec /tmp/venv/bin/python job.py --stages ${STAGES}
           env:
             - {name: IS_LOCAL, value: "false"}
             - {name: APP_ID, value: "${APP_ID}"}
@@ -42,12 +46,14 @@ spec:
             - {name: POSTGRES_USER, value: "${PG_USER}"}
             - {name: SPARK_MASTER, value: "local[2]"}
             - {name: SPARK_DRIVER_MEMORY, value: "512m"}
+            - {name: PYSPARK_PYTHON, value: /tmp/venv/bin/python}          # Spark's Python workers
+            - {name: PYSPARK_DRIVER_PYTHON, value: /tmp/venv/bin/python}
             - {name: PYTHONUNBUFFERED, value: "1"}
             - {name: PIP_NO_CACHE_DIR, value: "1"}
             - {name: PIP_DISABLE_PIP_VERSION_CHECK, value: "1"}
           envFrom:
             - secretRef:
-                name: ${JOB_NAME}-db     # POSTGRES_PASS, created by deploy.sh from Terraform state
+                name: ${JOB_NAME}-secrets  # POSTGRES_PASS + temporary AWS credentials, created by deploy.sh
           resources:
             requests: {cpu: 500m, memory: 1Gi}
             limits: {cpu: "2", memory: 3Gi}   # measured peak ~2.1 GiB (docs/test-evidence.md)

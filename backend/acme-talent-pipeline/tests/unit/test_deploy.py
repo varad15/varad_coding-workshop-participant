@@ -85,9 +85,12 @@ def test_job_manifest_renders_to_a_valid_job():
     env = {e["name"]: e["value"] for e in container["env"]}
     assert env["IS_LOCAL"] == "false" and env["DATALAKE_BUCKET"] == values["DATALAKE_BUCKET"]
     assert "POSTGRES_PASS" not in env                       # password only via the Secret
-    assert container["envFrom"][0]["secretRef"]["name"] == "acme-talent-pipeline-db"
+    assert container["envFrom"][0]["secretRef"]["name"] == "acme-talent-pipeline-secrets"
+    assert not any(k.startswith("AWS_ACCESS") or k.startswith("AWS_SECRET") for k in env)   # credentials only via the Secret
+    assert env["PYSPARK_PYTHON"] == "/tmp/venv/bin/python"                                  # workers use the job's venv
     assert container["resources"]["limits"]["memory"] == "3Gi"
-    assert "python job.py --stages seed,bronze,silver,gold" in container["args"][0]
+    assert "/tmp/venv/bin/python job.py --stages seed,bronze,silver,gold" in container["args"][0]
+    assert "unset PYTHONPATH SPARK_HOME" in container["args"][0]
 
 
 def test_deploy_scripts_are_executable():

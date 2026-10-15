@@ -103,4 +103,4 @@ None. `bin/` and `infra/` match the workshop repo. Two consequences are handled 
 | Stock behaviour | How the pipeline avoids it |
 |---|---|
 | Every `backend/*/requirements.txt` folder is deployed as a 128 MB Lambda (and `start-dev.sh` vendors its packages into the folder) | dependencies live in `requirements-job.txt`, so the stock scripts skip this folder |
-| The stock EKS job ships only one `job.py`, with no environment variables or secrets, and a 2 GiB limit | `deploy/deploy.sh` + `deploy/k8s/job.yaml`: code bundle ConfigMap, env vars, password Secret, 3 GiB limit |
+| The stock EKS job ships only one `job.py`, with no environment variables or secrets, and a 2 GiB limit | `deploy/deploy.sh` + `deploy/k8s/job.yaml`: code bundle ConfigMap, env vars, Secret (DB password + temporary AWS credentials), own virtualenv, 3 GiB limit |

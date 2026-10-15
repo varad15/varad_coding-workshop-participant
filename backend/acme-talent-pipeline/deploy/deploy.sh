@@ -9,7 +9,7 @@
 #     3. connect kubectl to the cluster
 #     4. create the data lake bucket (private, encrypted) if it does not exist
 #     5. sync backend/_source to s3://<bucket>/landing/ (the S3 source system)
-#     6. store the Aurora password as a Kubernetes Secret
+#     6. store the Aurora password (+ temporary AWS credentials) as a Kubernetes Secret
 #     7. package this folder as a ConfigMap
 #     8. (re)create the Kubernetes Job, stream its logs and report the result
 #
@@ -20,6 +20,7 @@
 #     STAGES=seed,bronze,...  pipeline stages to run (default: seed,bronze,silver,gold)
 #     FOLLOW_LOGS=false       start the job and return without waiting
 #     WAIT_TIMEOUT_S=1800     how long to wait for the job to finish
+#     USE_NODE_ROLE=true      do not pass your AWS credentials to the job (only if pods can use the node role)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -101,15 +102,35 @@ remote_files="$(aws s3 ls "s3://$DATALAKE_BUCKET/landing/learning_activity/" --r
 [ "$local_files" -eq "$remote_files" ] || die "landing has $remote_files event files, expected $local_files"
 echo "$remote_files event files + HR seed files in landing/"
 
-# ------------------------------------------------------------ 6. database secret
-step "Kubernetes Secret ${JOB_NAME}-db"
+# --------------------------------------------------------------- 6. job secrets
+# Pods on the workshop's EKS nodes cannot obtain the node role's AWS credentials
+# (first cloud run: NoCredentialsError), and IRSA would need infra changes. The job
+# therefore gets the participant's temporary credentials - the same ones this script
+# uses for the bucket - refreshed on every deploy. Set USE_NODE_ROLE=true to skip.
+step "Kubernetes Secret ${JOB_NAME}-secrets"
 umask 077
-printf 'POSTGRES_PASS=%s\n' "$PG_PASS" > "$TMP_DIR/db.env"
-kubectl create secret generic "${JOB_NAME}-db" -n "$NAMESPACE" --from-env-file="$TMP_DIR/db.env" \
+printf 'POSTGRES_PASS=%s\n' "$PG_PASS" > "$TMP_DIR/job.env"
+if [ "${USE_NODE_ROLE:-false}" != "true" ]; then
+    if ! aws configure export-credentials --format env-no-export > "$TMP_DIR/aws.env" 2>/dev/null; then
+        : > "$TMP_DIR/aws.env"
+        for var in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN; do
+            [ -n "${!var:-}" ] && printf '%s=%s\n' "$var" "${!var}" >> "$TMP_DIR/aws.env"
+        done
+    fi
+    grep -q '^AWS_ACCESS_KEY_ID=' "$TMP_DIR/aws.env" \
+        || die "could not read your AWS credentials: run 'source ENVIRONMENT.config' and retry"
+    # keep the three credential lines, without any surrounding quotes
+    grep -E '^AWS_(ACCESS_KEY_ID|SECRET_ACCESS_KEY|SESSION_TOKEN)=' "$TMP_DIR/aws.env" \
+        | sed -E "s/^([A-Z_]+)=[\"'](.*)[\"']$/\1=\2/" >> "$TMP_DIR/job.env"
+    expiry="$(sed -n 's/^AWS_CREDENTIAL_EXPIRATION=//p' "$TMP_DIR/aws.env")"
+    echo "job will use your temporary AWS credentials${expiry:+ (valid until $expiry)}"
+fi
+kubectl create secret generic "${JOB_NAME}-secrets" -n "$NAMESPACE" --from-env-file="$TMP_DIR/job.env" \
     --dry-run=client -o yaml | kubectl apply --server-side --force-conflicts -f - >/dev/null
-rm -f "$TMP_DIR/db.env"
+rm -f "$TMP_DIR/job.env" "$TMP_DIR/aws.env"
 unset PG_PASS
-echo "applied (password taken from Terraform state, not stored in git)"
+kubectl delete secret "${JOB_NAME}-db" -n "$NAMESPACE" --ignore-not-found >/dev/null   # name used by the first version
+echo "applied (values from Terraform state and your session, never stored in git)"
 
 # ------------------------------------------------------------- 7. code bundle
 step "Packaging the pipeline code"

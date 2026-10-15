@@ -36,10 +36,17 @@
 
 ## Cloud deployment caveats (to verify on the workshop AWS account)
 
-- **Not yet run in AWS.** The pipeline has been verified locally and on the VDI only.
+- **First AWS run:** `deploy.sh` provisioned everything and the job started on EKS with the cloud settings; it then
+  failed on the two issues below (credentials, image packages), which are fixed.
 - **Network:** EKS pods must be allowed to reach Aurora on port 5432 (security groups owned by the workshop setup).
-- **S3 permissions of the EKS node role** (`coding-workshop-eks-<region>-<id>`, pre-created by the organisers): it needs
-  read/write on `coding-workshop-datalake-<id>`. Otherwise the job fails with *AccessDenied* (§7).
+- **AWS credentials in the pod.** On the first cloud run the pod could not obtain the EKS node role's credentials
+  (`NoCredentialsError`), and pod-level IAM (IRSA) would need infra changes. `deploy.sh` therefore passes the
+  participant's *temporary* credentials to the job through the Kubernetes Secret. They expire (the job needs only a
+  few minutes) and every `deploy.sh` run refreshes them; `undeploy.sh` deletes them. In production the job would use
+  its own IAM role (IRSA), never a person's credentials.
+- **Image packages:** `jupyter/all-spark-notebook` ships libraries built for NumPy 1.x and an older Spark on
+  `PYTHONPATH`/`SPARK_HOME`; the job installs its pinned dependencies into its own virtualenv (`/tmp/venv`) and points
+  Spark's Python workers at it (`PYSPARK_PYTHON`).
 - **Memory:** Spark's JVM plus the Python driver peak at about 2.1 GiB (PSS) on the sample data with a 512 MB heap,
   so `deploy/k8s/job.yaml` allows 3 GiB (the stock Helm job limit is 2 GiB).
 - **Image:** `jupyter/all-spark-notebook:latest` (the workshop's job image: Python 3.11, Java 17). Every pinned

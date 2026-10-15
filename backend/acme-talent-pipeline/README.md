@@ -145,7 +145,7 @@ echo "export TF_VAR_aws_eks_enabled=true" >> ~/.bashrc && source ~/.bashrc
 
 `deploy.sh` reads the EKS cluster name and the Aurora connection from the Terraform state, creates
 `s3://coding-workshop-datalake-<app-id>` (private, encrypted) if needed, syncs `backend/_source` to `landing/`,
-stores the Aurora password as the Kubernetes Secret `acme-talent-pipeline-db`, ships this folder (code only,
+stores the Aurora password and your temporary AWS credentials as the Kubernetes Secret `acme-talent-pipeline-secrets`, ships this folder (code only,
 ~40 KB) as the ConfigMap `acme-talent-pipeline-code`, and runs the Job `acme-talent-pipeline`
 (`deploy/k8s/job.yaml`: Spark image, `IS_LOCAL=false`, 3 GiB memory limit). It exits 0 only if the job succeeds.
 
