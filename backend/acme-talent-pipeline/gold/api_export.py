@@ -298,14 +298,27 @@ def export_api(lake: DataLake, frames: dict[str, pd.DataFrame], as_of: date, run
     cover = coverage_json(frames["skill_distribution"])
     extra = extras_json(frames["promotion_pipeline"], frames["employee_skill_gaps"], frames["employee_course_progress"])
 
+    READABLE = {"employee_id": "Missing employee id", "event_date": "Invalid event date",
+                "file quarantined for schema drift": "Schema drift (whole file)", "malformed JSON": "Truncated / malformed JSON"}
     try:
         report = json.loads(lake.get_bytes("_meta/dq_reports/latest/report.json"))
         ev = report["entities"]["learning_events"]
+        reasons: dict[str, int] = {}
+        for raw_reason, count in (ev.get("rejection_reasons") or {}).items():
+            label = READABLE.get(raw_reason.split(":")[0], raw_reason.split(":")[0])
+            reasons[label] = reasons.get(label, 0) + int(count)
         quality = {
             "events_raw": ev["bronze_rows"], "events_clean": ev["silver_rows"],
             "events_quarantined": ev["quarantined_rows"], "events_duplicates": ev["duplicates_dropped"],
             "usable_pct": _round(ev["silver_rows"] / ev["bronze_rows"] * 100),
             "reconciles": all(report["reconciliation"].values()),
+            "reasons": sorted(({"reason": k, "count": v} for k, v in reasons.items()), key=lambda r: -r["count"]),
+            "entities": [
+                {"entity": name, "bronze": e["bronze_rows"], "silver": e["silver_rows"],
+                 "quarantined": e["quarantined_rows"], "duplicates": e["duplicates_dropped"],
+                 "reconciles": bool(report["reconciliation"].get(name))}
+                for name, e in report["entities"].items() if "bronze_rows" in e
+            ],
         }
     except Exception as exc:  # the dashboard must not die over a missing DQ report
         log.warning("dq_report_unavailable", extra={"error": str(exc)})

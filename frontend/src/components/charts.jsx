@@ -322,6 +322,67 @@ export function PairedHBars({ rows, labelA, labelB, colorA = "var(--crit)", colo
   );
 }
 
+
+/** The notebook's quality-flow diagram: raw lines fan out into clean / quarantined / dropped. */
+export function QualityFlow({ raw, clean, quarantined, duplicates, usablePct }) {
+  const node = (x, y, w, h, stroke, fillVar) => (
+    <rect x={x} y={y} width={w} height={h} rx="10" fill={fillVar} fillOpacity="0.1" stroke={stroke} strokeWidth="1.5" />
+  );
+  return (
+    <svg viewBox="0 0 560 232" role="img" style={svgStyle(620)}>
+      <defs>
+        <marker id="qf-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0 0L10 5L0 10z" fill="var(--muted)" />
+        </marker>
+      </defs>
+      <rect x="14" y="76" width="170" height="78" rx="10" fill="none" stroke="var(--muted)" strokeWidth="1.5" />
+      <text x="99" y="108" textAnchor="middle">Raw event lines</text>
+      <text className="val" x="99" y="134" textAnchor="middle" fontSize="19" fill="var(--ink)">{fmt(raw)}</text>
+      {node(366, 10, 180, 62, "var(--series-1)", "var(--series-1)")}
+      <text x="456" y="36" textAnchor="middle">Clean (Silver)</text>
+      <text className="val" x="456" y="58" textAnchor="middle" fontSize="17" fill="var(--ink)">{fmt(clean)}</text>
+      {node(366, 86, 180, 62, "var(--crit)", "var(--crit)")}
+      <text x="456" y="112" textAnchor="middle">Quarantined, with reasons</text>
+      <text className="val" x="456" y="134" textAnchor="middle" fontSize="17" fill="var(--ink)">{fmt(quarantined)}</text>
+      {node(366, 162, 180, 62, "var(--warn)", "var(--warn)")}
+      <text x="456" y="188" textAnchor="middle">Duplicates removed</text>
+      <text className="val" x="456" y="210" textAnchor="middle" fontSize="17" fill="var(--ink)">{fmt(duplicates)}</text>
+      <g fill="none" stroke="var(--muted)" strokeWidth="1.25">
+        <path d="M184 100C260 100 280 41 360 41" markerEnd="url(#qf-a)" />
+        <path d="M184 115H360" markerEnd="url(#qf-a)" />
+        <path d="M184 130C260 130 280 193 360 193" markerEnd="url(#qf-a)" />
+      </g>
+      <text className="val" x="268" y="32" textAnchor="middle" fill="var(--series-1)">{usablePct}% usable</text>
+    </svg>
+  );
+}
+
+/** Horizontal lollipop with a dashed reference line (e.g. department averages vs org). */
+export function Lollipop({ rows, refValue, refLabel, domain, format = (v) => v.toFixed(2), labelWidth = 170 }) {
+  const width = 560, rowH = 27, padR = 54;
+  const [lo, hi] = domain;
+  const height = rows.length * rowH + 22;
+  const x = (v) => labelWidth + ((v - lo) / (hi - lo)) * (width - labelWidth - padR);
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} role="img" style={svgStyle(620)}>
+      <line x1={x(refValue)} x2={x(refValue)} y1="2" y2={height - 20} stroke="var(--muted)" strokeDasharray="4 4" />
+      <text className="tick" x={x(refValue)} y={height - 6} textAnchor="middle">{refLabel}</text>
+      {rows.map((r, i) => {
+        const y = i * rowH + 14;
+        return (
+          <g key={r.label} className="hover-target">
+            <title>{`${r.label}: ${format(r.value)}`}</title>
+            <text x={labelWidth - 10} y={y + 4} textAnchor="end">{r.label}</text>
+            <line x1={labelWidth} x2={x(r.value)} y1={y} y2={y} stroke="var(--grid)" strokeWidth="2" />
+            <circle cx={x(r.value)} cy={y} r="5.5" fill="var(--series-1)" stroke="var(--surface-1)" strokeWidth="2" />
+            <text className="val" x={x(r.value) + 10} y={y + 4}>{format(r.value)}</text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 export function DataTable({ columns, rows }) {
   return (
     <table>
@@ -338,5 +399,5 @@ export function DataTable({ columns, rows }) {
 }
 
 export function Finding({ children }) {
-  return <p className="finding"><b>Finding - </b>{children}</p>;
+  return <p className="finding"><span className="fl">Finding &mdash; </span>{children}</p>;
 }
