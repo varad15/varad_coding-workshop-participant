@@ -33,11 +33,13 @@ FULL_STATE = {
     "resources": [
         _resource("aws_s3_bucket", {"bucket": "coding-workshop-website-2188ea91"}),
         _resource("aws_s3_bucket", {"bucket": "hot-reload"}, name="hot_reload"),
-        _resource("aws_eks_cluster", {"name": "coding-workshop-2188ea91"}),
+        _resource("aws_eks_cluster", {"name": "coding-workshop-2188ea91",
+                                      "vpc_config": [{"cluster_security_group_id": "sg-0eks"}]}),
         _resource(
             "aws_rds_cluster",
             {"endpoint": "db.cluster-x.ap-south-1.rds.amazonaws.com", "port": 5432, "database_name": "postgres",
-             "master_username": "postgres", "master_password": "brave-otter"},
+             "master_username": "postgres", "master_password": "brave-otter",
+             "vpc_security_group_ids": ["sg-0workshop"]},
         ),
     ]
 }
@@ -50,6 +52,7 @@ def test_reads_cluster_database_and_bucket_from_state():
     assert s["EKS_CLUSTER"] == "coding-workshop-2188ea91"
     assert s["PG_HOST"].endswith("rds.amazonaws.com") and s["PG_PORT"] == "5432"
     assert s["PG_PASS"] == "brave-otter"
+    assert s["AURORA_SG_IDS"] == "sg-0workshop" and s["EKS_CLUSTER_SG"] == "sg-0eks"
 
 
 @pytest.mark.parametrize("missing, message", [("aws_eks_cluster", "TF_VAR_aws_eks_enabled"), ("aws_rds_cluster", "Aurora")])

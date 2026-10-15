@@ -6,7 +6,7 @@
 # This script deploys the workload onto that platform:
 #     1. preflight: tools, fresh AWS credentials, Terraform state
 #     2. read the EKS cluster and Aurora connection from the Terraform state
-#     3. connect kubectl to the cluster
+#     3. connect kubectl to the cluster, and allow its worker nodes to reach Aurora on 5432
 #     4. create the data lake bucket (private, encrypted) if it does not exist
 #     5. sync backend/_source to s3://<bucket>/landing/ (the S3 source system)
 #     6. store the Aurora password (+ temporary AWS credentials) as a Kubernetes Secret
@@ -72,6 +72,33 @@ aws eks update-kubeconfig --name "$EKS_CLUSTER" --region "$AWS_REGION" >/dev/nul
 ready_nodes="$(kubectl get nodes --no-headers 2>/dev/null | awk '$2 == "Ready"' | wc -l || true)"
 [ "$ready_nodes" -ge 1 ] || die "no Ready nodes in $EKS_CLUSTER (kubectl get nodes)"
 echo "$ready_nodes node(s) Ready"
+
+# EKS gives the worker nodes its own cluster security group; Aurora only accepts the
+# workshop group. Allow PostgreSQL (tcp/5432) from the cluster group - nothing else.
+step "Network: EKS worker nodes -> Aurora (tcp/5432)"
+if [ -z "$EKS_CLUSTER_SG" ]; then
+    EKS_CLUSTER_SG="$(aws eks describe-cluster --name "$EKS_CLUSTER" --region "$AWS_REGION" \
+        --query 'cluster.resourcesVpcConfig.clusterSecurityGroupId' --output text)"
+fi
+[ -n "$EKS_CLUSTER_SG" ] && [ "$EKS_CLUSTER_SG" != "None" ] || die "could not find the EKS cluster security group"
+[ -n "$AURORA_SG_IDS" ] || die "could not find Aurora's security group in the Terraform state"
+for sg in $AURORA_SG_IDS; do
+    # shellcheck disable=SC2016  # backticks are a JMESPath literal, not shell
+    allowed="$(aws ec2 describe-security-groups --group-ids "$sg" --region "$AWS_REGION" --output text \
+        --query 'SecurityGroups[0].IpPermissions[?FromPort==`5432`].UserIdGroupPairs[].GroupId' 2>/dev/null || true)"
+    if printf '%s\n' "$allowed" | tr '\t' '\n' | grep -qx "$EKS_CLUSTER_SG"; then
+        echo "$sg already allows 5432 from $EKS_CLUSTER_SG"
+        continue
+    fi
+    rule='[{"IpProtocol":"tcp","FromPort":5432,"ToPort":5432,"UserIdGroupPairs":[{"GroupId":"'"$EKS_CLUSTER_SG"'","Description":"acme-talent-pipeline: EKS pods to Aurora"}]}]'
+    if aws ec2 authorize-security-group-ingress --group-id "$sg" --region "$AWS_REGION" \
+            --ip-permissions "$rule" >/dev/null 2>"$TMP_DIR/sg.err" \
+        || grep -q 'InvalidPermission.Duplicate' "$TMP_DIR/sg.err"; then
+        echo "$sg now allows 5432 from $EKS_CLUSTER_SG"
+    else
+        die "could not open tcp/5432 on $sg for the EKS nodes: $(head -c 400 "$TMP_DIR/sg.err")"
+    fi
+done
 
 # -------------------------------------------------------------- 4. data lake bucket
 step "Data lake bucket"

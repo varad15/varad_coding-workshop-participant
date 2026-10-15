@@ -38,7 +38,10 @@
 
 - **First AWS run:** `deploy.sh` provisioned everything and the job started on EKS with the cloud settings; it then
   failed on the two issues below (credentials, image packages), which are fixed.
-- **Network:** EKS pods must be allowed to reach Aurora on port 5432 (security groups owned by the workshop setup).
+- **Network (Aurora from EKS):** the second cloud run timed out connecting to Aurora. Aurora only accepts the
+  workshop security group, while EKS gives its worker nodes a separate cluster security group. `deploy.sh` adds one
+  ingress rule to Aurora's group (tcp/5432, source = this cluster's security group only); `undeploy.sh` removes it.
+  The participant IAM policy allows editing security groups tagged with the participant id.
 - **AWS credentials in the pod.** On the first cloud run the pod could not obtain the EKS node role's credentials
   (`NoCredentialsError`), and pod-level IAM (IRSA) would need infra changes. `deploy.sh` therefore passes the
   participant's *temporary* credentials to the job through the Kubernetes Secret. They expire (the job needs only a
