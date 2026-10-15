@@ -96,7 +96,9 @@ for sg in $AURORA_SG_IDS; do
         || grep -q 'InvalidPermission.Duplicate' "$TMP_DIR/sg.err"; then
         echo "$sg now allows 5432 from $EKS_CLUSTER_SG"
     else
-        die "could not open tcp/5432 on $sg for the EKS nodes: $(head -c 400 "$TMP_DIR/sg.err")"
+        echo "WARNING: could not add the rule on $sg ($(grep -o 'UnauthorizedOperation\|AccessDenied[A-Za-z]*\|InvalidGroup[A-Za-z.]*' "$TMP_DIR/sg.err" | head -1))."
+        echo "         Continuing in case Aurora already accepts the EKS nodes another way."
+        echo "         If seed.postgres times out, ask the organisers to allow tcp/5432 from $EKS_CLUSTER_SG to $sg."
     fi
 done
 
