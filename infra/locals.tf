@@ -20,16 +20,9 @@ locals {
     for file in fileset(format("%s/../backend", path.module), "*/package.json") :
     dirname(file) if !startswith(dirname(file), "_") && !startswith(dirname(file), ".")
   ]
-  # Python Lambda services: backend/<dir>/requirements.txt, excluding batch
-  # data jobs (folders that contain job.py), which run on EKS instead.
   backend_dirs_python = [
     for file in fileset(format("%s/../backend", path.module), "*/requirements.txt") :
-    dirname(file) if !startswith(dirname(file), "_") && !startswith(dirname(file), ".") && !fileexists(format("%s/../backend/%s/job.py", path.module, dirname(file)))
-  ]
-  # Batch data jobs kept under backend/ (workshop instruction): backend/<dir>/job.py
-  backend_job_dirs_python = [
-    for file in fileset(format("%s/../backend", path.module), "*/job.py") :
-    dirname(file) if !startswith(dirname(file), "_") && !startswith(dirname(file), ".") && fileexists(format("%s/../backend/%s/requirements.txt", path.module, dirname(file)))
+    dirname(file) if !startswith(dirname(file), "_") && !startswith(dirname(file), ".")
   ]
   backend_names_java = {
     for name in local.backend_dirs_java : name => {
@@ -75,24 +68,14 @@ locals {
     for file in fileset(format("%s/../data", path.module), "*/pom.xml") :
     dirname(file) if !startswith(dirname(file), "_") && !startswith(dirname(file), ".")
   ]
-  data_names_python = merge(
-    {
-      for name in local.data_dirs_python : name => {
-        name = name
-        path = abspath(format("%s/../data/%s", path.module, name))
-        file = "job.py"
-        reqs = "requirements.txt"
-      }
-    },
-    {
-      for name in local.backend_job_dirs_python : name => {
-        name = name
-        path = abspath(format("%s/../backend/%s", path.module, name))
-        file = "job.py"
-        reqs = "requirements.txt"
-      }
+  data_names_python = {
+    for name in local.data_dirs_python : name => {
+      name = name
+      path = abspath(format("%s/../data/%s", path.module, name))
+      file = "job.py"
+      reqs = "requirements.txt"
     }
-  )
+  }
   data_names_java = {
     for name in local.data_dirs_java : name => {
       name = name
@@ -129,20 +112,6 @@ locals {
     MONGO_USER    = data.aws_caller_identity.this.id == "000000000000" ? "" : try(one(aws_docdb_cluster.this.*.master_username), "")
     MONGO_PASS    = data.aws_caller_identity.this.id == "000000000000" ? "" : try(one(aws_docdb_cluster.this.*.master_password), "")
   }
-  # Environment for batch data jobs on EKS: the same variables Lambda gets
-  # (data-engineer.md section 2) plus the data lake bucket. Passwords are
-  # passed separately and stored in a Kubernetes Secret, not in the Job spec.
-  job_secret_keys = ["POSTGRES_PASS", "MONGO_PASS"]
-  job_env_vars = merge(
-    { for k, v in local.env_vars : k => v if !contains(local.job_secret_keys, k) && try(trimspace(v), "") != "" },
-    {
-      AWS_REGION          = data.aws_region.this.region
-      DATALAKE_BUCKET     = aws_s3_bucket.datalake.bucket
-      SPARK_DRIVER_MEMORY = "512m"
-      SPARK_MASTER        = "local[2]"
-    }
-  )
-  job_secret_env_vars = { for k in local.job_secret_keys : k => local.env_vars[k] if try(trimspace(local.env_vars[k]), "") != "" }
   lambda_role_arn = format(
     "arn:%s:iam::%s:role/%s-lambda-%s-%s",
     data.aws_partition.this.partition, data.aws_caller_identity.this.id,

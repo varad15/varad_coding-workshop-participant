@@ -90,18 +90,17 @@ Verified by `tests/integration/test_pipeline_end_to_end.py::test_second_run_is_i
 
 | | Local (VDI) | Cloud (AWS) |
 |---|---|---|
-| Runs as | `python job.py` | Kubernetes Job on EKS (Helm), created by `bin/deploy-backend.sh` |
+| Runs as | `python job.py` | Kubernetes Job on the stock EKS cluster, started by this folder's deploy script (in progress) |
 | PostgreSQL | local PostgreSQL `postgres/postgres123` | Aurora PostgreSQL Serverless v2, `sslmode=require` |
-| S3 | LocalStack (`AWS_ENDPOINT_URL_S3`) | AWS S3 bucket from `infra/s3.tf` |
-| Landing data | `landing` stage uploads `backend/_source` | Terraform `null_resource.datalake_landing` syncs `backend/_source` before the job |
+| S3 | LocalStack (`AWS_ENDPOINT_URL_S3`) | AWS S3 bucket `coding-workshop-datalake-<id>`, created by the deploy script |
+| Landing data | `landing` stage uploads `backend/_source` | the deploy script syncs `backend/_source` to `landing/` before the job |
 | Notebook | Jupyter on `localhost:8888` | JupyterHub on EKS (`kubectl port-forward svc/proxy-public 8080:80`) |
 
-## Infrastructure changes (outside `backend/`, wiring only)
+## Repository changes outside `backend/`
 
-| File | Change | Reason |
-|---|---|---|
-| `infra/locals.tf` | `backend/*/job.py` folders become EKS jobs, not Lambdas; job env vars | Spark can't run in a 128 MB Lambda |
-| `infra/eks.tf` | ship the whole job folder (tar.gz in ConfigMap); pass env vars + Secret; sync landing data first | the default Helm setup only shipped `job.py` and no env vars |
-| `infra/helm/templates/python-job.yaml`, `values.yaml` | bundle, `env`, `secretEnv`, writable `/app` | same |
-| `infra/s3.tf`, `infra/output.tf` | data lake bucket (private, encrypted) + output | no data lake bucket existed |
-| `bin/start-dev.sh` | skip `job.py` folders when vendoring Lambda dependencies | avoid copying PySpark into the source tree |
+None. `bin/` and `infra/` match the workshop repo. Two consequences are handled inside `backend/`:
+
+| Stock behaviour | How the pipeline avoids it |
+|---|---|
+| Every `backend/*/requirements.txt` folder is deployed as a 128 MB Lambda (and `start-dev.sh` vendors its packages into the folder) | dependencies live in `requirements-job.txt`, so the stock scripts skip this folder |
+| The stock EKS job ships only one `job.py`, with no environment variables or secrets | the pipeline is deployed with its own Kubernetes manifest and script (in progress) |

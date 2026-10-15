@@ -3,12 +3,6 @@ pythonJob:
   name: "python-job"
   scriptContent: ""
   requirementsContent: ""
-  # base64 tar.gz of the whole job folder (set by infra/eks.tf); optional.
-  bundleContent: ""
-  # Plain environment variables for the job container.
-  env: {}
-  # Sensitive environment variables, stored in a Kubernetes Secret.
-  secretEnv: {}
   backoffLimit: 4
   ttlSecondsAfterFinished: 100
   restartPolicy: Never
@@ -19,10 +13,7 @@ pythonJob:
   resources:
     limits:
       cpu: 1.0
-      # Spark (JVM ~1.2 GiB) + Python driver peak ~2.1 GiB on the sample data
-      # (backend/acme-talent-pipeline/docs/test-evidence.md). The request stays
-      # 1Gi so the pod still schedules next to JupyterHub on one t3.medium.
-      memory: 3Gi
+      memory: 2Gi
     requests:
       cpu: 0.5
       memory: 1Gi

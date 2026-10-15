@@ -5,8 +5,7 @@ Batch ETL pipeline on a medallion data lake (Bronze → Silver → Gold). It ing
 transforms them with **PySpark**, and serves seven business answers to a **Jupyter** notebook.
 
 Built from the workshop skeleton `data/_examples/python-job` and following `docs/data-engineer.md`.
-Per the organisers' instruction it lives in `backend/` (see [docs/architecture.md](docs/architecture.md) for the
-infra wiring that runs it on EKS instead of Lambda).
+Per the organisers' instruction it lives in `backend/`. The repo's `bin/` and `infra/` are unchanged.
 
 | Business question | Gold table |
 |---|---|
@@ -36,7 +35,8 @@ backend/
 ├── _source/                      sample dataset (CSVs, schema.sql, JSONL events) - not deployed
 └── acme-talent-pipeline/
     ├── job.py                    entry point: landing -> seed -> bronze -> silver -> gold
-    ├── requirements.txt
+    ├── requirements-job.txt      Python dependencies (not named requirements.txt, so the repo's
+    │                             scripts don't treat this folder as a Lambda)
     ├── common/                   config, logging, retry, S3 + PostgreSQL adapters, Spark, lineage
     ├── contracts/                Pydantic schema contracts (mirror schema.sql) + Spark validator
     ├── seed/                     source-system bootstrap (S3 landing + PostgreSQL)
@@ -73,7 +73,7 @@ source ~/.bashrc
 
 cd backend/acme-talent-pipeline
 python3 -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-job.txt
 
 # LocalStack credentials (override the participant AWS keys from ENVIRONMENT.config)
 export IS_LOCAL=true AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_REGION=us-east-1 \
@@ -127,35 +127,9 @@ Integration tests create and drop their own database (`acme_test`) and buckets. 
 
 ## Deploy to AWS
 
-```sh
-cd ~/coding-workshop-participant
-echo "export TF_VAR_aws_eks_enabled=true" >> ~/.bashrc && source ~/.bashrc
-(cd infra && terraform init -backend=false >/dev/null && terraform validate)   # sanity check
-./bin/deploy-backend.sh
-```
-
-`deploy-backend.sh` (Terraform) creates Aurora, the data lake bucket and EKS; syncs `backend/_source` to
-`s3://coding-workshop-datalake-<id>/landing/`; then installs the job with Helm. Follow it with:
-
-```sh
-aws eks update-kubeconfig --name coding-workshop-$PARTICIPANT_ID
-kubectl get jobs
-kubectl logs -f job/coding-workshop-acme-talent-pipeline
-```
-
-To re-run after a code change: `kubectl delete job coding-workshop-acme-talent-pipeline --ignore-not-found && ./bin/deploy-backend.sh`.
-
-### Notebook (cloud, JupyterHub on EKS)
-
-```sh
-kubectl port-forward svc/proxy-public 8080:80     # then open http://localhost:8080, log in with workshop credentials
-```
-
-Upload `notebooks/acme_talent_insights.ipynb` and, before the first cell, set:
-
-```python
-import os
-os.environ.update(IS_LOCAL="false", DATALAKE_BUCKET="coding-workshop-datalake-<your-participant-id>", AWS_REGION="us-east-1")
-```
+`bin/` and `infra/` are kept identical to the workshop repo. The stock `./bin/deploy-backend.sh` (with
+`TF_VAR_aws_eks_enabled=true`) provisions Aurora and the EKS cluster; the pipeline is then deployed onto that
+cluster by a script inside this folder (`deploy/`, in progress). The earlier version that wired the job into
+`infra/` is archived on branch `feature/eks-deploy-infra`.
 
 Cloud caveats (S3 permissions of the EKS role, job memory, redeploys) are in [docs/limitations.md](docs/limitations.md).

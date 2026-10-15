@@ -1,5 +1,5 @@
 {{- if .Values.pythonJob.enabled }}
-{{- if or .Values.pythonJob.scriptContent .Values.pythonJob.bundleContent }}
+{{- if .Values.pythonJob.scriptContent }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -11,25 +11,6 @@ data:
     {{ .Values.pythonJob.scriptContent | nindent 4 }}
   requirements.txt: |
     {{ .Values.pythonJob.requirementsContent | nindent 4 }}
-{{- if .Values.pythonJob.bundleContent }}
-binaryData:
-  # Whole job folder (job.py + its packages), tar.gz, base64-encoded.
-  bundle.tgz: {{ .Values.pythonJob.bundleContent | trim }}
-{{- end }}
----
-{{- end }}
-{{- if .Values.pythonJob.secretEnv }}
-apiVersion: v1
-kind: Secret
-metadata:
-  name: {{ include "name" . }}-{{ .Values.pythonJob.name }}-secret
-  labels:
-    {{- include "labels" . | nindent 4 }}
-type: Opaque
-stringData:
-  {{- range $key, $value := .Values.pythonJob.secretEnv }}
-  {{ $key }}: {{ $value | quote }}
-  {{- end }}
 ---
 {{- end }}
 apiVersion: batch/v1
@@ -51,37 +32,15 @@ spec:
           command: ["sh", "-c"]
           args:
             - |
-              set -e
-              if [ -f /source/bundle.tgz ]; then
-                echo "Unpacking job bundle..."
-                tar -xzf /source/bundle.tgz -C /app
-              else
-                cp /source/job.py /source/requirements.txt /app/
-              fi
-              cd /app
-              if [ -f requirements.txt ]; then
+              if [ -f /app/requirements.txt ]; then
                 echo "Installing pipeline dependencies from requirements.txt..."
-                pip install --no-cache-dir -r requirements.txt
+                pip install --no-cache-dir -r /app/requirements.txt
               fi
-              python job.py
-          {{- if .Values.pythonJob.env }}
-          env:
-            {{- range $key, $value := .Values.pythonJob.env }}
-            - name: {{ $key }}
-              value: {{ $value | quote }}
-            {{- end }}
-          {{- end }}
-          {{- if .Values.pythonJob.secretEnv }}
-          envFrom:
-            - secretRef:
-                name: {{ include "name" . }}-{{ .Values.pythonJob.name }}-secret
-          {{- end }}
+              python /app/job.py
+          {{- if .Values.pythonJob.scriptContent }}
           volumeMounts:
-            - name: app
+            - name: script
               mountPath: /app
-          {{- if or .Values.pythonJob.scriptContent .Values.pythonJob.bundleContent }}
-            - name: source
-              mountPath: /source
           {{- end }}
           resources:
             limits:
@@ -90,11 +49,9 @@ spec:
             requests:
               cpu: {{ .Values.pythonJob.resources.requests.cpu }}
               memory: {{ .Values.pythonJob.resources.requests.memory }}
+      {{- if .Values.pythonJob.scriptContent }}
       volumes:
-        - name: app
-          emptyDir: {}
-      {{- if or .Values.pythonJob.scriptContent .Values.pythonJob.bundleContent }}
-        - name: source
+        - name: script
           configMap:
             name: {{ include "name" . }}-{{ .Values.pythonJob.name }}-source
       {{- end }}
