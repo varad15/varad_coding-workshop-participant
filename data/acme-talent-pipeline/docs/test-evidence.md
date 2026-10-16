@@ -76,6 +76,21 @@ real sample multiplied (event ids rewritten, data-quality issues multiplied too)
 | External dependency (retry / backoff) | ✅ `test_external_dependency_retry_backoff`: two injected S3 outages absorbed, write succeeds |
 | SLA verification | ✅ full end-to-end run (landing → Gold, 1×) **114 s** vs 600 s SLA (`PIPELINE_SLA_SECONDS`) |
 
+### Memory under the stock chart's 2 GiB limit
+
+The stock EKS chart (`infra/helm`) caps the pod at 2 GiB / 1 CPU with no override, so peak RSS of the whole
+process tree (what the pod cgroup counts: Python driver + Spark JVM + Python workers) was sampled every 0.5 s
+across full end-to-end runs (landing → Gold, 1× data):
+
+| Spark profile | Peak RSS | Run time | Result |
+|---|---:|---:|---|
+| defaults (`local[*]`, 1 g heap, worker reuse on) | 2,551 MiB | 120 s | would exceed 2 GiB — OOM-killed |
+| `local[2]`, 768 m heap | 2,546 MiB | ~120 s | lingering reused workers keep the peak high |
+| **`local[1]`, 512 m heap, `spark.python.worker.reuse=false`** | **1,700 MiB** | 81–98 s | **fits, ≈350 MiB headroom** |
+
+At peak under the final profile: JVM ≈ 965 MiB, Python driver ≈ 680 MiB, one transient worker ≈ 55 MiB.
+This profile is what `job.py`'s bootstrap applies in the stock-chart pod (Secret values override it).
+
 ## 4. Conclusions and issues found by testing
 
 1. **PySpark 4.1.2 dropped rows silently**: converting the 783-chunk Bronze Arrow table gave 19,934 of

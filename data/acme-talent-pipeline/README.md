@@ -71,7 +71,7 @@ cd ~/coding-workshop-participant
 source ~/.bashrc
 ./bin/start-dev.sh                         # starts PostgreSQL + LocalStack (Ctrl+C after "LocalStack services verified" is fine)
 
-cd backend/acme-talent-pipeline
+cd data/acme-talent-pipeline
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements-job.txt
 
@@ -127,33 +127,51 @@ Integration tests create and drop their own database (`acme_test`) and buckets. 
 
 ## Deploy to AWS
 
-`bin/` and `infra/` are identical to the workshop repo. The workshop's own script provisions the platform;
-`deploy/deploy.sh` (in this folder) deploys and runs the pipeline on it.
+`bin/` and `infra/` are identical to the workshop repo. This job lives in `data/acme-talent-pipeline/`,
+so the workshop's own deploy path provisions and runs it as the EKS Kubernetes Job
+(`infra/locals.tf` discovers `data/*/requirements.txt` → `infra/eks.tf` → `infra/helm/templates/python-job.yaml`).
+
+The stock chart ships only `job.py` + `requirements.txt` into the pod and injects no environment, no AWS
+identity and no database settings (see `docs/limitations.md`), so one prereqs script stages what the chart
+cannot, and `job.py` bootstraps itself inside the pod (see its module docstring).
 
 ```sh
 cd ~/coding-workshop-participant
-source ~/.bashrc
 ./bin/setup-participant.sh && source ENVIRONMENT.config          # fresh AWS credentials
 
-# 1. Platform (stock scripts): Aurora PostgreSQL + EKS cluster
+# 0. Stage what the stock chart cannot: landing data, source bundle,
+#    Kubernetes Secret (full job environment), Secret-read RBAC
+./data/acme-talent-pipeline/deploy/cloud-prereqs.sh
+
+# 1. Platform AND pipeline job - the workshop's own script
+#    (it re-runs the pipeline Job on every apply)
 echo "export TF_VAR_aws_eks_enabled=true" >> ~/.bashrc && source ~/.bashrc
 ./bin/deploy-backend.sh
 
-# 2. Workload: bucket, landing data, Secret, code, Kubernetes Job (streams the logs)
-./backend/acme-talent-pipeline/deploy/deploy.sh
+# 2. Aurora network: terraform resets Aurora's security groups on every apply,
+#    so re-attach the EKS cluster group after each deploy (permitted rds call)
+./data/acme-talent-pipeline/deploy/open-aurora-network.sh
+
+# 3. Watch the run (the Job retries while the network change propagates, ~2-5 min)
+kubectl get jobs | grep acme-talent-pipeline
+kubectl logs -f job/$(kubectl get jobs -o name | grep acme-talent-pipeline | cut -d/ -f2)
 ```
 
-`deploy.sh` reads the EKS cluster name and the Aurora connection from the Terraform state, creates
-`s3://coding-workshop-datalake-<app-id>` (private, encrypted) if needed, syncs `backend/_source` to `landing/`,
-stores the Aurora password and your temporary AWS credentials as the Kubernetes Secret `acme-talent-pipeline-secrets`, ships this folder (code only,
-~40 KB) as the ConfigMap `acme-talent-pipeline-code`, and runs the Job `acme-talent-pipeline`
-(`deploy/k8s/job.yaml`: Spark image, `IS_LOCAL=false`, 3 GiB memory limit). It exits 0 only if the job succeeds.
+The stock chart caps the pod at 2 GiB / 1 CPU; the bootstrap therefore applies a constrained Spark profile
+(`SPARK_MASTER=local[1]`, `SPARK_DRIVER_MEMORY=512m`, `spark.python.worker.reuse=false`) — measured peak
+≈1.7 GiB, see `docs/test-evidence.md`. Values in the Secret override the profile.
+
+### Fallback: self-contained deploy script
+
+`deploy/deploy.sh` is the original self-contained path (own Job manifest `deploy/k8s/job.yaml`,
+`IS_LOCAL=false`, 3 GiB memory limit) and still works unchanged:
 
 ```sh
+./data/acme-talent-pipeline/deploy/deploy.sh        # bucket, landing, Secret, code ConfigMap, Job + logs
 kubectl get jobs,pods                               # status
 kubectl logs job/acme-talent-pipeline               # logs again
-STAGES=silver,gold ./backend/acme-talent-pipeline/deploy/deploy.sh   # re-run selected stages
-./backend/acme-talent-pipeline/deploy/undeploy.sh   # remove the Job, ConfigMap and Secret (data kept)
+STAGES=silver,gold ./data/acme-talent-pipeline/deploy/deploy.sh   # re-run selected stages
+./data/acme-talent-pipeline/deploy/undeploy.sh      # remove the Job, ConfigMap and Secret (data kept)
 ```
 
 ### Insights dashboard (Lambda API + React UI, stock deploy scripts)

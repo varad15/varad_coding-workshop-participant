@@ -23,8 +23,9 @@ from typing import Mapping
 
 _TRUE_VALUES = {"1", "true", "yes", "y", "on"}
 
-# Default location of the sample dataset inside the repository (backend/_source).
-_DEFAULT_SOURCE_DIR = Path(__file__).resolve().parents[2] / "_source"
+# Default location of the sample dataset inside the repository (backend/_source,
+# resolved from the repo root: this file lives at data/acme-talent-pipeline/common/).
+_DEFAULT_SOURCE_DIR = Path(__file__).resolve().parents[3] / "backend" / "_source"
 
 
 def _as_bool(value: str | None, default: bool) -> bool:

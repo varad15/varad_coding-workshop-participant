@@ -7,7 +7,7 @@ URL, reachable through CloudFront at /api/insights-api/*).
 
 It serves the chart-ready JSON files the data pipeline writes to
 s3://coding-workshop-datalake-<APP_ID>/gold/_api/ (see
-backend/acme-talent-pipeline/gold/api_export.py). No database access and no
+data/acme-talent-pipeline/gold/api_export.py). No database access and no
 heavy dependencies: boto3 ships with the Lambda runtime.
 
 Routes (GET):

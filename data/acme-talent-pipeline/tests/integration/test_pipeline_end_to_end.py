@@ -27,7 +27,7 @@ from common.storage import DataLake
 pytestmark = pytest.mark.integration
 
 PIPELINE_DIR = Path(__file__).resolve().parents[2]
-SOURCE_DIR = PIPELINE_DIR.parent / "_source"
+SOURCE_DIR = PIPELINE_DIR.parents[1] / "backend" / "_source"
 
 # Known facts about the sample dataset (profiled independently of the pipeline).
 SOURCE_COUNTS = {

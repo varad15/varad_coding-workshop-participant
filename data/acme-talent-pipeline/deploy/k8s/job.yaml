@@ -32,7 +32,7 @@ spec:
               unset PYTHONPATH SPARK_HOME
               echo "Installing pipeline dependencies into /tmp/venv..."
               python -m venv /tmp/venv
-              /tmp/venv/bin/pip install --quiet -r requirements-job.txt
+              /tmp/venv/bin/pip install --quiet -r requirements.txt
               exec /tmp/venv/bin/python job.py --stages ${STAGES}
           env:
             - {name: IS_LOCAL, value: "false"}

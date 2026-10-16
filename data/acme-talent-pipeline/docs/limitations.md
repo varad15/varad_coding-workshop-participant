@@ -38,10 +38,13 @@
 
 - **First AWS run:** `deploy.sh` provisioned everything and the job started on EKS with the cloud settings; it then
   failed on the two issues below (credentials, image packages), which are fixed.
-- **Network (Aurora from EKS):** the second cloud run timed out connecting to Aurora. Aurora only accepts the
-  workshop security group, while EKS gives its worker nodes a separate cluster security group. `deploy.sh` adds one
-  ingress rule to Aurora's group (tcp/5432, source = this cluster's security group only); `undeploy.sh` removes it.
-  The participant IAM policy allows editing security groups tagged with the participant id.
+- **Network (Aurora from EKS):** the second cloud run timed out connecting to Aurora. Aurora's stock security
+  group only admits itself, while EKS gives its worker nodes a separate cluster security group. Editing security
+  group rules is denied to participants (`UnauthorizedOperation`; `deploy.sh` only warns), but `rds:ModifyDBCluster`
+  is permitted: `deploy/open-aurora-network.sh` attaches the EKS cluster security group to the Aurora cluster —
+  no rule is added or changed anywhere. Terraform resets Aurora's groups on every `./bin/deploy-backend.sh`, so the
+  script must be re-run after each deploy (propagation ≈2–5 min; the Job's retries cover the gap). This is a manual
+  change to organiser-managed infrastructure and is called out here deliberately.
 - **AWS credentials in the pod.** On the first cloud run the pod could not obtain the EKS node role's credentials
   (`NoCredentialsError`), and pod-level IAM (IRSA) would need infra changes. `deploy.sh` therefore passes the
   participant's *temporary* credentials to the job through the Kubernetes Secret. They expire (the job needs only a
@@ -55,6 +58,28 @@
 - **Image:** `jupyter/all-spark-notebook:latest` (the workshop's job image: Python 3.11, Java 17). Every pinned
   dependency has a Python 3.11 wheel (checked); PySpark 4.1.2 needs Python ≥ 3.10 and Java 17+. The pod installs
   them from PyPI at start-up, as the stock Helm job does. Override with `JOB_IMAGE=...`.
-- **Verified so far:** the deploy script passes shellcheck; the state reader and the rendered Job manifest are unit-tested;
-  the exact code bundle was unpacked and run with the pod's stage list against a fresh bucket and database (all steps
-  succeeded, same counts as locally). A real EKS run is still pending.
+- **Verified so far:** the full pipeline has run green on EKS via `deploy/deploy.sh`
+  (run `20261015T110047Z-48df18`: 153 s, 27 steps, all reconciliations passed, `gold/_api` written and served by
+  the insights-api Lambda). The stock-chart path below is verified locally (97 tests green from `data/`, full run
+  under the 2 GiB profile); its first real EKS run is pending.
+
+## Stock-chart deployment gaps (data/ job via ./bin/deploy-backend.sh)
+
+The job now lives in `data/acme-talent-pipeline/` so the organisers' own deploy path provisions it
+(`infra/locals.tf` → `infra/eks.tf` → `infra/helm/templates/python-job.yaml`). Gaps found in that path, and how
+this project works inside them without touching `bin/` or `infra/`:
+
+- **No environment is injected.** The guide (`docs/data-engineer.md`, "Database Environment Variables") says
+  `POSTGRES_*`/`IS_LOCAL` are injected automatically in cloud mode, but the stock chart defines no `env` at all.
+  Workaround: `deploy/cloud-prereqs.sh` writes the full job environment into the Kubernetes Secret
+  `acme-talent-pipeline-secrets`, and `job.py`'s bootstrap reads it through the in-cluster API (a Role/RoleBinding
+  grants the default ServiceAccount `get` on that one named Secret).
+- **Only two files reach the pod** (`job.py`, `requirements.txt`, via ConfigMap). Workaround: the prereqs script
+  uploads the pipeline source as `s3://<datalake>/_deploy/src.tar.gz`; the bootstrap downloads and re-executes it.
+- **No AWS identity** (no ServiceAccount IAM, and IMDS hop limit 1 blocks the node role). Same temporary-credentials
+  Secret as the fallback path; IRSA would be the production answer but needs infra changes.
+- **2 GiB / 1 CPU, not overridable** from outside `infra/`. The bootstrap applies a constrained Spark profile
+  (`local[1]`, 512 MB driver heap, `spark.python.worker.reuse=false`): measured peak falls from ≈2.5 GiB to
+  ≈1.7 GiB (`docs/test-evidence.md`), at ≈1.2× the runtime.
+- **The data-lake bucket is created by our scripts, not Terraform**, so `terraform destroy` will not remove it —
+  delete `s3://coding-workshop-datalake-<app-id>` by hand when tearing down.

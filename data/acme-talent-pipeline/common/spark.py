@@ -75,6 +75,12 @@ def create_spark_session(settings: Settings, app_name: str = "acme-talent-pipeli
         )
         .config("spark.ui.enabled", "false")
     )
+    # Optional overrides for constrained pods, e.g. the stock 2 GiB EKS chart:
+    # SPARK_EXTRA_CONF="spark.python.worker.reuse=false;spark.sql.execution.arrow.maxRecordsPerBatch=2000"
+    for pair in os.environ.get("SPARK_EXTRA_CONF", "").split(";"):
+        if "=" in pair:
+            key, _, value = pair.partition("=")
+            builder = builder.config(key.strip(), value.strip())
     spark = builder.getOrCreate()
     spark.sparkContext.setLogLevel("ERROR")
     return spark

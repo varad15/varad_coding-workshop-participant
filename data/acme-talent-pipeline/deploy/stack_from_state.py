@@ -56,6 +56,7 @@ def read_stack(state: dict) -> dict[str, str]:
         "PG_USER": rds["master_username"],
         "PG_PASS": rds["master_password"],
         # network: Aurora's security group(s) and the group EKS gives its worker nodes
+        "PG_CLUSTER_ID": rds.get("cluster_identifier") or rds.get("id") or "",
         "AURORA_SG_IDS": " ".join(rds.get("vpc_security_group_ids") or []),
         "EKS_CLUSTER_SG": ((eks.get("vpc_config") or [{}])[0] or {}).get("cluster_security_group_id") or "",
     }

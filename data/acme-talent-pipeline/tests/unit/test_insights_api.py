@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-FUNCTION_PY = Path(__file__).resolve().parents[3] / "insights-api" / "function.py"
+FUNCTION_PY = Path(__file__).resolve().parents[4] / "backend" / "insights-api" / "function.py"
 
 
 @pytest.fixture()
