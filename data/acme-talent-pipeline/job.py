@@ -160,6 +160,11 @@ if not (_HERE / "bronze").is_dir():
         _apply_profile()
         _build_venv()
         _fetch_bundle()
+        # Spark's Python workers are separate processes: they do not inherit the
+        # driver's sys.path, only its environment and working directory. Both
+        # must point at the bundle or the workers fail to import contracts/ etc.
+        os.chdir(_SRC_DIR)
+        os.environ["PYTHONPATH"] = _SRC_DIR
         target = f"{_SRC_DIR}/job.py"
         _blog(f"exec {_VENV}/bin/python {target}")
         os.execv(f"{_VENV}/bin/python", [f"{_VENV}/bin/python", target, *sys.argv[1:]])
